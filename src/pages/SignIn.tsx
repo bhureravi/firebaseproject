@@ -7,9 +7,14 @@ import {
   onAuthStateChanged,
   sendEmailVerification,
   signOut,
-  User
+  User,
 } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  serverTimestamp,
+  getDoc,
+} from "firebase/firestore";
 
 import { auth, db } from "../firebaseConfig";
 
@@ -48,6 +53,7 @@ const SignIn: React.FC = () => {
     );
   };
 
+  /* ================= REGISTER ================= */
   const handleRegister = async () => {
     if (!email || !pw || !name) {
       alert("Please enter name, college email and password.");
@@ -65,20 +71,20 @@ const SignIn: React.FC = () => {
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, pw);
 
+      // default profile document in Firestore
       await setDoc(doc(db, "users", cred.user.uid), {
         name,
         email,
-        role: "student",
+        role: "student", // default
         walletAddress: null,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
       });
 
       await sendEmailVerification(cred.user);
       await signOut(auth);
 
       setInfo(
-        "Registration successful. Verification email sent. " +
-          "Please verify and then log in."
+        "Registration successful. Verification email sent. Please verify and then log in."
       );
     } catch (e) {
       showError(e);
@@ -87,6 +93,7 @@ const SignIn: React.FC = () => {
     }
   };
 
+  /* ================= LOGIN ================= */
   const handleLogin = async () => {
     if (!email || !pw) {
       alert("Please enter email and password.");
@@ -105,9 +112,25 @@ const SignIn: React.FC = () => {
         return;
       }
 
+      // Read user role from Firestore and redirect appropriately
+      const userSnap = await getDoc(doc(db, "users", cred.user.uid));
+      if (!userSnap.exists()) {
+        alert("User profile not found in Firestore.");
+        await signOut(auth);
+        return;
+      }
+
+      const role = userSnap.data()?.role || "student";
+
       if (!redirectedRef.current) {
         redirectedRef.current = true;
-        navigate("/dashboard", { replace: true });
+        if (role === "head") {
+          navigate("/dashboard", { replace: true }); // or /head if you implement a head dashboard
+        } else if (role === "club") {
+          navigate("/club", { replace: true });
+        } else {
+          navigate("/dashboard", { replace: true });
+        }
       }
     } catch (e) {
       showError(e);

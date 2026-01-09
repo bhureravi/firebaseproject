@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
 
 import {
   Card,
@@ -16,104 +16,156 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 
 import {
-  Trophy,
   Calendar,
-  Star,
-  TrendingUp,
-  Users,
-  Award,
-  ArrowRight,
-  Clock
+  LayoutDashboard,
 } from "lucide-react";
 
-import { getEvents } from "../utils/storage";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  QueryDocumentSnapshot,
+  DocumentData
+} from "firebase/firestore";
+
+type EventItem = {
+  id: string;
+  name: string;
+  date?: string; // YYYY-MM-DD OR may be missing
+  rawDate?: any; // original field, might be Timestamp
+  participants?: string[];
+  attendees?: string[];
+  [k: string]: any;
+  status?: "upcoming" | "ongoing" | "completed";
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
 
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
-  const [starredEvents, setStarredEvents] = useState<any[]>([]);
-  const [registeredEvents, setRegisteredEvents] = useState<any[]>([]);
-  const [recentEvents, setRecentEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [registeredEvents, setRegisteredEvents] = useState<EventItem[]>([]);
+  const [attendedEvents, setAttendedEvents] = useState<EventItem[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<EventItem[]>([]);
 
-  // 🔐 AUTH CHECK (Firebase only)
+  // Convert various date formats to 'YYYY-MM-DD' string
+  const toDateString = (raw: any): string | null => {
+    if (!raw && raw !== 0) return null;
+    // Firestore Timestamp has toDate function
+    if (raw?.toDate && typeof raw.toDate === "function") {
+      return raw.toDate().toISOString().split("T")[0];
+    }
+    // If stored as ISO string
+    if (typeof raw === "string" && raw.includes("T")) {
+      return raw.split("T")[0];
+    }
+    // If stored as 'YYYY-MM-DD' already
+    if (typeof raw === "string") {
+      return raw;
+    }
+    // If stored as number (unix ms)
+    if (typeof raw === "number") {
+      return new Date(raw).toISOString().split("T")[0];
+    }
+    return null;
+  };
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         navigate("/signin");
         return;
       }
 
-      const firebaseUser = {
-        id: user.uid,
-        name: user.displayName || user.email,
-        email: user.email,
-        tokens: 0,
-        participatedEvents: [],
-        starredEvents: []
-      };
+      try {
+        // load user doc
+        const userSnap = await getDoc(doc(db, "users", user.uid));
+        let userObj: any = {
+          id: user.uid,
+          name: user.displayName || user.email,
+          email: user.email,
+          tokens: 0,
+          participatedEvents: [],
+        };
 
-      setCurrentUser(firebaseUser);
-      loadDashboardData(firebaseUser);
+        if (userSnap.exists()) {
+          const data = userSnap.data() as any;
+          userObj = {
+            ...userObj,
+            ...data,
+            id: user.uid,
+          };
+        }
+
+        setCurrentUser(userObj);
+
+        // load all events (we'll filter locally)
+        const eventsCol = collection(db, "events");
+        const qSnap = await getDocs(eventsCol);
+
+        const allEvents: EventItem[] = qSnap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => {
+          const data = d.data();
+          const rawDate = data.date ?? null;
+          const dateStr = toDateString(rawDate ?? data.dateString ?? null);
+          return {
+            id: d.id,
+            name: data.name ?? "(no name)",
+            date: dateStr ?? "",
+            rawDate,
+            participants: data.participants ?? [],
+            attendees: data.attendees ?? [],
+            ...data
+          } as EventItem;
+        });
+
+        // determine status for each event
+        const today = new Date().toISOString().split("T")[0];
+        const eventsWithStatus = allEvents.map((ev) => {
+          const d = ev.date ?? "";
+          if (!d) return { ...ev, status: "upcoming" as const }; // unknown => upcoming
+          if (d < today) return { ...ev, status: "completed" as const };
+          if (d === today) return { ...ev, status: "ongoing" as const };
+          return { ...ev, status: "upcoming" as const };
+        });
+
+        setEvents(eventsWithStatus);
+
+        // find events where user is participant / attendee
+        const uid = user.uid;
+        const regs = eventsWithStatus.filter((e) => (e.participants ?? []).includes(uid));
+        const atts = eventsWithStatus.filter((e) => (e.attendees ?? []).includes(uid));
+        const upc = eventsWithStatus.filter((e) => e.status === "upcoming" || e.status === "ongoing");
+
+        setRegisteredEvents(regs);
+        setAttendedEvents(atts);
+        setUpcomingEvents(upc.slice(0, 3));
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
     });
 
-    return () => unsubscribe();
+    return () => unsub();
   }, [navigate]);
 
-  const loadDashboardData = (user: any) => {
-    const events = getEvents();
-    const today = new Date().toISOString().split("T")[0];
-
-    const updatedEvents = events.map((event: any) => {
-      if (event.date < today) return { ...event, status: "completed" };
-      if (event.date === today) return { ...event, status: "ongoing" };
-      return { ...event, status: "upcoming" };
-    });
-
-    setUpcomingEvents(
-      updatedEvents.filter(
-        (e: any) => e.status === "upcoming" || e.status === "ongoing"
-      ).slice(0, 3)
-    );
-
-    setStarredEvents(
-      updatedEvents.filter((e: any) =>
-        e.starredBy?.includes(user.id)
-      ).slice(0, 3)
-    );
-
-    setRegisteredEvents(
-      updatedEvents.filter(
-        (e: any) =>
-          e.participants?.includes(user.id) &&
-          (e.status === "upcoming" || e.status === "ongoing")
-      )
-    );
-
-    setRecentEvents(
-      updatedEvents.filter((e: any) =>
-        user.participatedEvents?.includes(e.id)
-      ).slice(0, 3)
-    );
-  };
-
   const calculateProgress = () => {
-    return Math.min((currentUser.tokens / 100) * 100, 100);
+    const tokens = Number(currentUser?.tokens ?? 0);
+    // example: 100 tokens = 100% progress
+    return Math.min((tokens / 100) * 100, 100);
   };
 
+  if (loading) return <div className="p-8">Loading dashboard...</div>;
   if (!currentUser) return null;
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">
-          Welcome back, {currentUser.name} 👋
-        </h1>
-        <p className="text-muted-foreground">
-          Track events and earn rewards
-        </p>
+        <h1 className="text-3xl font-bold">Welcome back, {currentUser.name} 👋</h1>
+        <p className="text-muted-foreground">Track events and earn rewards</p>
       </div>
 
       {/* Stats */}
@@ -121,7 +173,7 @@ const Dashboard = () => {
         <Card>
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Tokens</p>
-            <p className="text-3xl font-bold">{currentUser.tokens}</p>
+            <p className="text-3xl font-bold">{currentUser.tokens ?? 0}</p>
           </CardContent>
         </Card>
 
@@ -134,17 +186,15 @@ const Dashboard = () => {
 
         <Card>
           <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground">Starred</p>
-            <p className="text-3xl font-bold">{starredEvents.length}</p>
+            <p className="text-sm text-muted-foreground">Attended</p>
+            <p className="text-3xl font-bold">{attendedEvents.length}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground">Attended</p>
-            <p className="text-3xl font-bold">
-              {currentUser.participatedEvents.length}
-            </p>
+            <p className="text-sm text-muted-foreground">Upcoming</p>
+            <p className="text-3xl font-bold">{upcomingEvents.length}</p>
           </CardContent>
         </Card>
       </div>
@@ -172,10 +222,15 @@ const Dashboard = () => {
           {registeredEvents.length === 0 ? (
             <p className="text-muted-foreground">No registered events</p>
           ) : (
-            registeredEvents.map((event: any) => (
+            registeredEvents.map((event) => (
               <div key={event.id} className="p-3 border rounded mb-2">
-                <p className="font-medium">{event.name}</p>
-                <Badge>{event.status}</Badge>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-medium">{event.name}</p>
+                    <div className="text-sm text-muted-foreground">{event.date}</div>
+                  </div>
+                  <Badge>{event.status}</Badge>
+                </div>
               </div>
             ))
           )}

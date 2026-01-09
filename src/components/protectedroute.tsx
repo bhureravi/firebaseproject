@@ -1,33 +1,35 @@
 // src/components/ProtectedRoute.tsx
-import React, { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { Navigate } from "react-router-dom";
 import { auth } from "../firebaseConfig";
+import { useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
 
-interface Props {
-  children: React.ReactNode;
-}
-
-/**
- * ProtectedRoute:
- * - Waits for Firebase auth state
- * - If user exists -> renders children
- * - If not -> redirects to /signin
- */
-export default function ProtectedRoute({ children }: Props) {
-  const [authChecked, setAuthChecked] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
+  const [loading, setLoading] = useState(true);
+  const [userExists, setUserExists] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
-      setIsLoggedIn(!!user);
-      setAuthChecked(true);
+      if (user) {
+        setUserExists(true);
+      } else {
+        setUserExists(false);
+      }
+      setLoading(false);
     });
+
     return () => unsub();
   }, []);
 
-  // while we check auth, render nothing (or spinner if you want)
-  if (!authChecked) return null;
+  if (loading) {
+    return <div className="p-10">Checking authentication...</div>;
+  }
 
-  return isLoggedIn ? <>{children}</> : <Navigate to="/signin" replace />;
-}
+  if (!userExists) {
+    return <Navigate to="/signin" replace />;
+  }
+
+  return children;
+};
+
+export default ProtectedRoute;

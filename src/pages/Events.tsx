@@ -1,337 +1,267 @@
-import { useState, useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
+// src/pages/ClubNewEvent.tsx
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Search, 
-  Star, 
-  Calendar, 
-  MapPin, 
-  Clock, 
-  Users, 
-  Trophy,
-  Filter
-} from "lucide-react";
-import { getCurrentUser, getEvents, toggleStarEvent, registerForEvent, unregisterFromEvent } from "../utils/storage";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Calendar, Clock, MapPin, Users, Trophy, Plus, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const Events = () => {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedTab, setSelectedTab] = useState("upcoming");
-  const [sortBy, setSortBy] = useState("date");
-  const [showStarredOnly, setShowStarredOnly] = useState(false);
-  const [events, setEvents] = useState([]);
-  const [currentUser, setCurrentUser] = useState(getCurrentUser());
+import { auth, db } from "../firebaseConfig";
+import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
+
+type ClubUser = {
+  uid: string;
+  name?: string;
+  email?: string;
+  role?: string;
+  clubId?: string;
+  // any other fields you store
+};
+
+const ClubNewEvent = () => {
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [clubUser, setClubUser] = useState<ClubUser | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const navigate = useNavigate();
   const { toast } = useToast();
 
+  const [form, setForm] = useState({
+    name: "",
+    description: "",
+    venue: "",
+    date: "",
+    startTime: "",
+    endTime: "",
+    capacity: "", // optional
+    tokens: ""
+  });
+
+  // -> Listen auth and load Firestore user doc (reliable check)
   useEffect(() => {
-    loadEvents();
+    setLoadingUser(true);
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        setClubUser(null);
+        setAccessDenied(false);
+        setLoadingUser(false);
+        return;
+      }
+      try {
+        const snap = await getDoc(doc(db, "users", u.uid));
+        if (!snap.exists()) {
+          setClubUser(null);
+          setAccessDenied(true);
+        } else {
+          const data: any = snap.data();
+          const role = (data.role || "").toString().trim();
+          if (role !== "club") {
+            setClubUser({ uid: u.uid, ...data });
+            setAccessDenied(true);
+          } else {
+            setClubUser({ uid: u.uid, ...data });
+            setAccessDenied(false);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading user doc:", err);
+        setClubUser(null);
+        setAccessDenied(true);
+      } finally {
+        setLoadingUser(false);
+      }
+    });
+
+    return () => unsub();
   }, []);
 
-  const loadEvents = () => {
-    const allEvents = getEvents();
-    // Update event statuses based on current date
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    
-    const updatedEvents = allEvents.map(event => {
-      if (event.date < today) {
-        return { ...event, status: 'completed' };
-      } else if (event.date === today) {
-        return { ...event, status: 'ongoing' };
-      } else {
-        return { ...event, status: 'upcoming' };
-      }
-    });
-    
-    setEvents(updatedEvents);
-  };
+  const update = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
-  const filteredEvents = useMemo(() => {
-    let filtered = events;
+  // form submit
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-    // Filter by status
-    filtered = filtered.filter(event => event.status === selectedTab);
-
-    // Filter by search query
-    if (searchQuery) {
-      filtered = filtered.filter(event =>
-        event.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        event.club.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    // Filter by starred only
-    if (showStarredOnly && currentUser) {
-      filtered = filtered.filter(event =>
-        event.starredBy.includes(currentUser.id)
-      );
-    }
-
-    // Sort events
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'date':
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-        case 'tokens':
-          return b.tokens - a.tokens;
-        case 'name':
-          return a.name.localeCompare(b.name);
-        default:
-          return 0;
-      }
-    });
-
-    return filtered;
-  }, [events, selectedTab, searchQuery, showStarredOnly, sortBy, currentUser]);
-
-  const handleStarToggle = (eventId: string) => {
-    if (!currentUser) {
-      toast({
-        title: "Sign in required",
-        description: "Please sign in to star events",
-        variant: "destructive"
-      });
+    // must be logged in and role=club
+    if (!clubUser || accessDenied) {
+      toast({ title: "Access denied", description: "You must be logged in as a club account to create events.", variant: "destructive" });
       return;
     }
 
-    toggleStarEvent(eventId, currentUser.id);
-    loadEvents();
-    setCurrentUser(getCurrentUser()); // Refresh user data
-  };
-
-  const handleRegistration = (eventId: string) => {
-    if (!currentUser) {
-      toast({
-        title: "Sign in required",
-        description: "Please sign in to register for events",
-        variant: "destructive"
-      });
+    // required validations
+    if (!form.name || !form.date || !form.startTime || !form.endTime || !form.tokens) {
+      toast({ title: "Missing fields", description: "Please fill in required fields (name, date, start/end time, tokens).", variant: "destructive" });
       return;
     }
 
-    const event = events.find(e => e.id === eventId);
-    const isRegistered = event?.participants.includes(currentUser.id);
-
-    if (isRegistered) {
-      unregisterFromEvent(eventId, currentUser.id);
-      toast({
-        title: "Registration cancelled",
-        description: `You've been unregistered from "${event?.name}"`,
-      });
-    } else {
-      registerForEvent(eventId, currentUser.id);
-      toast({
-        title: "Successfully registered!",
-        description: `You've registered for "${event?.name}"`,
-      });
+    const tokensNum = Number(form.tokens);
+    if (isNaN(tokensNum) || tokensNum <= 0) {
+      toast({ title: "Invalid tokens", description: "Tokens must be a positive number.", variant: "destructive" });
+      return;
     }
 
-    loadEvents();
-    setCurrentUser(getCurrentUser());
-  };
+    const capacityNum = form.capacity ? Number(form.capacity) : 0;
+    if (form.capacity && (isNaN(capacityNum) || capacityNum < 0)) {
+      toast({ title: "Invalid capacity", description: "Capacity must be a non-negative number.", variant: "destructive" });
+      return;
+    }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'upcoming': return 'bg-primary text-primary-foreground';
-      case 'ongoing': return 'bg-accent-orange text-accent-orange-foreground';
-      case 'completed': return 'bg-muted text-muted-foreground';
-      default: return 'bg-muted text-muted-foreground';
+    setIsSubmitting(true);
+    try {
+      const eventDoc = {
+        name: form.name,
+        description: form.description || "",
+        venue: form.venue || "",
+        date: form.date,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        capacity: capacityNum,
+        tokens: tokensNum,
+        club: clubUser.clubId || "Unknown Club",
+        clubId: clubUser.clubId || null,
+        participants: [],
+        starredBy: [],
+        createdBy: clubUser.uid,
+        createdAt: serverTimestamp()
+      };
+
+      await addDoc(collection(db, "events"), eventDoc);
+
+      toast({ title: "Event created", description: `"${form.name}" was created.`, });
+      // go back to club dashboard or events
+      navigate("/club");
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Create failed", description: "Failed to create event. Try again.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
+  // UI states
+  if (loadingUser) return <div className="p-8">Checking account...</div>;
 
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <h1 className="text-4xl font-bold">Campus Events</h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Discover workshops, hackathons, and tech events. Participate to earn tokens and build your profile.
-          </p>
-        </div>
-
-        {/* Search and Filters */}
-        <Card className="bg-gradient-card border-border/50">
-          <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row gap-4 items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  placeholder="Search events or clubs..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-full md:w-[180px]">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="date">Date</SelectItem>
-                  <SelectItem value="tokens">Tokens</SelectItem>
-                  <SelectItem value="name">Name</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Button
-                variant={showStarredOnly ? "secondary" : "outline"}
-                onClick={() => setShowStarredOnly(!showStarredOnly)}
-                className="w-full md:w-auto"
-              >
-                <Star className="w-4 h-4 mr-2" />
-                Starred Only
-              </Button>
+  if (!auth.currentUser) {
+    // Not logged in
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Sign in required</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4">You must sign in to create a club event.</p>
+            <div className="flex gap-3">
+              <Button onClick={() => navigate("/signin")}>Sign in</Button>
+              <Button variant="ghost" onClick={() => navigate("/")}>Back</Button>
             </div>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
 
-        {/* Tabs */}
-        <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
-            <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
-            <TabsTrigger value="completed">Completed</TabsTrigger>
-          </TabsList>
+  if (accessDenied) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Access denied</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4">Your account does not have club permissions. If you should have club access, ask the main admin to assign your account the `club` role in Firestore.</p>
+            <div className="flex gap-3">
+              <Button onClick={() => navigate("/profile")}>Profile</Button>
+              <Button variant="ghost" onClick={() => navigate("/")}>Back</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-          <TabsContent value={selectedTab} className="mt-8">
-            {filteredEvents.length === 0 ? (
-              <Card className="text-center py-12">
-                <CardContent>
-                  <div className="space-y-4">
-                    <Calendar className="w-16 h-16 mx-auto text-muted-foreground/50" />
-                    <h3 className="text-xl font-semibold">No events found</h3>
-                    <p className="text-muted-foreground">
-                      {searchQuery 
-                        ? "Try adjusting your search or filters"
-                        : selectedTab === 'upcoming' 
-                          ? "No upcoming events right now — check back later or explore past events"
-                          : `No ${selectedTab} events to show`
-                      }
-                    </p>
-                    {!currentUser && (
-                      <Button asChild className="mt-4">
-                        <Link to="/signin">Sign In to Register for Events</Link>
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredEvents.map((event: any) => {
-                  const isStarred = currentUser && event.starredBy.includes(currentUser.id);
-                  const isRegistered = currentUser && event.participants.includes(currentUser.id);
-                  const canRegister = selectedTab === 'upcoming' && currentUser?.role === 'student';
+  // clubUser && allowed
+  const minDate = new Date().toISOString().split("T")[0];
 
-                  return (
-                    <Card 
-                      key={event.id} 
-                      className="group hover:shadow-medium transition-all duration-smooth border-border/50 bg-gradient-card"
-                    >
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between">
-                          <Badge className={`${getStatusColor(event.status)} text-xs`}>
-                            {event.status}
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleStarToggle(event.id)}
-                            className="text-muted-foreground hover:text-accent-orange -mt-2 -mr-2"
-                          >
-                            <Star className={`w-4 h-4 ${isStarred ? 'fill-current text-accent-orange' : ''}`} />
-                          </Button>
-                        </div>
-                        
-                        <CardTitle className="text-lg leading-tight group-hover:text-primary transition-colors">
-                          {event.name}
-                        </CardTitle>
-                        
-                        <div className="flex items-center space-x-2">
-                          <Badge variant="outline" className="text-xs">
-                            {event.club}
-                          </Badge>
-                          <Badge className="bg-token text-token-foreground text-xs">
-                            <Trophy className="w-3 h-3 mr-1" />
-                            {event.tokens} tokens
-                          </Badge>
-                        </div>
-                      </CardHeader>
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-2xl mx-auto space-y-8">
+        <div className="flex items-center space-x-4">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/club")}>
+            <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
+          </Button>
+        </div>
 
-                      <CardContent className="space-y-4">
-                        <div className="space-y-2 text-sm text-muted-foreground">
-                          <div className="flex items-center">
-                            <Calendar className="w-4 h-4 mr-2" />
-                            {formatDate(event.date)}
-                          </div>
-                          <div className="flex items-center">
-                            <Clock className="w-4 h-4 mr-2" />
-                            {event.startTime} - {event.endTime}
-                          </div>
-                          <div className="flex items-center">
-                            <MapPin className="w-4 h-4 mr-2" />
-                            {event.venue}
-                          </div>
-                          <div className="flex items-center">
-                            <Users className="w-4 h-4 mr-2" />
-                            {event.registered} / {event.capacity} registered
-                          </div>
-                        </div>
+        <div className="text-center space-y-2">
+          <h1 className="text-3xl font-bold">Create New Event</h1>
+          <p className="text-muted-foreground">Set up a new event for students to participate in and earn tokens</p>
+        </div>
 
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {event.description}
-                        </p>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center"><Plus className="w-5 h-5 mr-2 text-primary" /> Event Details</CardTitle>
+          </CardHeader>
 
-                        {canRegister && (
-                          <Button
-                            onClick={() => handleRegistration(event.id)}
-                            variant={isRegistered ? "outline" : "default"}
-                            className="w-full"
-                            disabled={!isRegistered && event.registered >= event.capacity}
-                          >
-                            {isRegistered 
-                              ? "Cancel Registration" 
-                              : event.registered >= event.capacity 
-                                ? "Event Full" 
-                                : "Register"
-                            }
-                          </Button>
-                        )}
-
-                        {selectedTab === 'completed' && isRegistered && (
-                          <div className="text-center p-2 bg-token/10 rounded">
-                            <span className="text-sm text-token font-medium">
-                              ✓ Earned {event.tokens} tokens
-                            </span>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <Label>Event Name *</Label>
+                <Input value={form.name} onChange={(e) => update("name", e.target.value)} required />
               </div>
-            )}
-          </TabsContent>
-        </Tabs>
+
+              <div>
+                <Label>Description</Label>
+                <Textarea value={form.description} onChange={(e) => update("description", e.target.value)} rows={4} />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label>Date *</Label>
+                  <Input type="date" min={minDate} value={form.date} onChange={(e) => update("date", e.target.value)} required />
+                </div>
+
+                <div>
+                  <Label>Start Time *</Label>
+                  <Input type="time" value={form.startTime} onChange={(e) => update("startTime", e.target.value)} required />
+                </div>
+
+                <div>
+                  <Label>End Time *</Label>
+                  <Input type="time" value={form.endTime} onChange={(e) => update("endTime", e.target.value)} required />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Venue (optional)</Label>
+                  <Input placeholder="Enter venue (e.g., Lecture Hall 3)" value={form.venue} onChange={(e) => update("venue", e.target.value)} />
+                </div>
+
+                <div>
+                  <Label>Capacity (optional)</Label>
+                  <Input type="number" min="0" placeholder="e.g., 50" value={form.capacity} onChange={(e) => update("capacity", e.target.value)} />
+                </div>
+              </div>
+
+              <div>
+                <Label>Tokens per participant *</Label>
+                <Input type="number" min="1" value={form.tokens} onChange={(e) => update("tokens", e.target.value)} required />
+                <p className="text-sm text-muted-foreground mt-1">Recommended: 5–20 for workshops, 20–50 for hackathons</p>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => navigate("/club")}>Cancel</Button>
+                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Creating..." : "Create Event"}</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
 };
 
-export default Events;
+export default ClubNewEvent;
