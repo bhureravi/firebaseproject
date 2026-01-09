@@ -1,3 +1,4 @@
+// src/App.tsx
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,12 +22,13 @@ import NotFound from "./pages/NotFound";
 
 // Layout
 import Layout from "./components/Layout";
+import ProtectedRoute from "./components/protectedroute";
 
 const queryClient = new QueryClient();
 
 const App = () => {
   useEffect(() => {
-    // Initialize sample data on app start
+    // Initialize sample data on app start (keeps demo data working)
     initializeData();
   }, []);
 
@@ -40,15 +42,46 @@ const App = () => {
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/signin" element={<SignIn />} />
-              <Route path="/profile" element={<Profile />} />
               <Route path="/events" element={<Events />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/club" element={<ClubDashboard />} />
-              <Route path="/club/new-event" element={<ClubNewEvent />} />
               <Route path="/about" element={<About />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/help" element={<Help />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
+              {/* Protected routes */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <Profile />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/club"
+                element={
+                  <ProtectedRoute>
+                    <ClubDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/club/new-event"
+                element={
+                  <ProtectedRoute>
+                    <ClubNewEvent />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Layout>
