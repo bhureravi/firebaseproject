@@ -1,11 +1,10 @@
-// src/App.tsx
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useEffect } from "react";
-import { initializeData } from "./utils/storage";
+
+
 
 // Pages
 import Index from "./pages/Index";
@@ -19,6 +18,10 @@ import About from "./pages/About";
 import Contact from "./pages/Contact";
 import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
+import HeadDashboard from "./pages/HeadDashboard";
+import ClubProposals from "./pages/ClubProposals";
+
+
 
 // Layout
 import Layout from "./components/Layout";
@@ -27,11 +30,6 @@ import ProtectedRoute from "./components/protectedroute";
 const queryClient = new QueryClient();
 
 const App = () => {
-  useEffect(() => {
-    // Initialize sample data on app start (keeps demo data working)
-    initializeData();
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -40,6 +38,7 @@ const App = () => {
         <BrowserRouter>
           <Layout>
             <Routes>
+              {/* Public */}
               <Route path="/" element={<Index />} />
               <Route path="/signin" element={<SignIn />} />
               <Route path="/events" element={<Events />} />
@@ -47,7 +46,7 @@ const App = () => {
               <Route path="/contact" element={<Contact />} />
               <Route path="/help" element={<Help />} />
 
-              {/* Protected routes */}
+              {/* Logged-in users */}
               <Route
                 path="/dashboard"
                 element={
@@ -56,6 +55,7 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/profile"
                 element={
@@ -64,6 +64,8 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
+              {/* Club admins */}
               <Route
                 path="/club"
                 element={
@@ -72,6 +74,30 @@ const App = () => {
                   </ProtectedRoute>
                 }
               />
+
+
+
+              <Route
+  path="/head"
+  element={
+    <ProtectedRoute>
+      <HeadDashboard />
+    </ProtectedRoute>
+  }
+/>
+
+
+<Route
+  path="/club/proposals"
+  element={
+    <ProtectedRoute>
+      <ClubProposals />
+    </ProtectedRoute>
+  }
+/>
+
+
+
               <Route
                 path="/club/new-event"
                 element={
@@ -79,9 +105,9 @@ const App = () => {
                     <ClubNewEvent />
                   </ProtectedRoute>
                 }
-              />
+              /> 
 
-              {/* Catch-all */}
+              {/* 404 */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Layout>
