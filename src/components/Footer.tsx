@@ -54,16 +54,17 @@ const Footer = () => {
 
           {/* Club Information */}
           <div>
-            <h3 className="font-semibold text-foreground mb-4">Our Clubs</h3>
+            <h3 className="font-semibold text-foreground mb-4">Our Club</h3>
             <div className="space-y-3">
               <div>
+               
                 <h4 className="text-sm font-medium text-foreground">WebOps Club IITM</h4>
                 <p className="text-xs text-muted-foreground">Web development & operations</p>
               </div>
-              <div>
+              {/* <div>
                 <h4 className="text-sm font-medium text-foreground">Blockchain Club IITM</h4>  
                 <p className="text-xs text-muted-foreground">Blockchain & Web3 education</p>
-              </div>
+              </div> */}
             </div>
           </div>
 
@@ -72,14 +73,14 @@ const Footer = () => {
             <h3 className="font-semibold text-foreground mb-4">Connect</h3>
             <div className="space-y-3">
               <a 
-                href="mailto:contact@instichain.iitm.ac.in"
+                href="mailto:cfiwebops@samail.iitm.ac.in"
                 className="flex items-center text-muted-foreground hover:text-primary transition-colors text-sm"
               >
                 <Mail className="w-4 h-4 mr-2" />
-                contact@instichain.iitm.ac.in
+                cfiwebops@samail.iitm.ac.in
               </a>
               <a 
-                href="https://github.com/webops-iitm" 
+                href="#" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center text-muted-foreground hover:text-primary transition-colors text-sm"
@@ -89,7 +90,7 @@ const Footer = () => {
                 <ExternalLink className="w-3 h-3 ml-1" />
               </a>
               <a 
-                href="https://instagram.com/webops_iitm" 
+                href="#" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center text-muted-foreground hover:text-primary transition-colors text-sm"
@@ -106,7 +107,7 @@ const Footer = () => {
         <div className="border-t border-border pt-8 mt-8">
           <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
             <div className="text-xs text-muted-foreground">
-              © 2025 Insti Chain. Built with ❤️ by WebOps & Blockchain Club IITM.
+              {/* © 2025 Insti Chain. Built with ❤️ by WebOps & Blockchain Club IITM. */}
             </div>
             <div className="flex space-x-6 text-xs">
               <Link 

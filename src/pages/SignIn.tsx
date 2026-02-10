@@ -15,7 +15,6 @@ import {
   serverTimestamp,
   getDoc,
 } from "firebase/firestore";
-
 import { auth, db } from "../firebaseConfig";
 
 const COLLEGE_DOMAIN = "@smail.iitm.ac.in";
@@ -28,7 +27,7 @@ const SignIn: React.FC = () => {
   const [info, setInfo] = useState<string | null>(null);
 
   const navigate = useNavigate();
-  const redirectedRef = useRef(false); // prevents double navigation
+  const redirectedRef = useRef(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user: User | null) => {
@@ -40,7 +39,6 @@ const SignIn: React.FC = () => {
         setInfo(null);
       }
     });
-
     return () => unsub();
   }, []);
 
@@ -55,12 +53,20 @@ const SignIn: React.FC = () => {
 
   /* ================= REGISTER ================= */
   const handleRegister = async () => {
-    if (!email || !pw || !name) {
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!trimmedName) {
+      alert("Name is required for registration.");
+      return;
+    }
+
+    if (!trimmedEmail || !pw) {
       alert("Please enter name, college email and password.");
       return;
     }
 
-    if (!email.toLowerCase().endsWith(COLLEGE_DOMAIN)) {
+    if (!trimmedEmail.endsWith(COLLEGE_DOMAIN)) {
       alert(`Please use your institute email (${COLLEGE_DOMAIN}).`);
       return;
     }
@@ -69,13 +75,17 @@ const SignIn: React.FC = () => {
     setInfo(null);
 
     try {
-      const cred = await createUserWithEmailAndPassword(auth, email, pw);
+      const cred = await createUserWithEmailAndPassword(
+        auth,
+        trimmedEmail,
+        pw
+      );
 
-      // default profile document in Firestore
+      // Firestore user profile (name is guaranteed non-empty here)
       await setDoc(doc(db, "users", cred.user.uid), {
-        name,
-        email,
-        role: "student", // default
+        name: trimmedName,
+        email: trimmedEmail,
+        role: "student",
         walletAddress: null,
         createdAt: serverTimestamp(),
       });
@@ -86,6 +96,11 @@ const SignIn: React.FC = () => {
       setInfo(
         "Registration successful. Verification email sent. Please verify and then log in."
       );
+
+      // clear form
+      setName("");
+      setEmail("");
+      setPw("");
     } catch (e) {
       showError(e);
     } finally {
@@ -95,7 +110,9 @@ const SignIn: React.FC = () => {
 
   /* ================= LOGIN ================= */
   const handleLogin = async () => {
-    if (!email || !pw) {
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!trimmedEmail || !pw) {
       alert("Please enter email and password.");
       return;
     }
@@ -104,7 +121,11 @@ const SignIn: React.FC = () => {
     setInfo(null);
 
     try {
-      const cred = await signInWithEmailAndPassword(auth, email, pw);
+      const cred = await signInWithEmailAndPassword(
+        auth,
+        trimmedEmail,
+        pw
+      );
 
       if (!cred.user.emailVerified) {
         await signOut(auth);
@@ -112,10 +133,9 @@ const SignIn: React.FC = () => {
         return;
       }
 
-      // Read user role from Firestore and redirect appropriately
       const userSnap = await getDoc(doc(db, "users", cred.user.uid));
       if (!userSnap.exists()) {
-        alert("User profile not found in Firestore.");
+        alert("User profile not found.");
         await signOut(auth);
         return;
       }
@@ -125,7 +145,7 @@ const SignIn: React.FC = () => {
       if (!redirectedRef.current) {
         redirectedRef.current = true;
         if (role === "head") {
-          navigate("/dashboard", { replace: true }); // or /head if you implement a head dashboard
+          navigate("/dashboard", { replace: true });
         } else if (role === "club") {
           navigate("/club", { replace: true });
         } else {
@@ -150,11 +170,14 @@ const SignIn: React.FC = () => {
       )}
 
       <label className="block mb-2">
-        <div className="text-sm text-gray-600">Full name (for registration)</div>
+        <div className="text-sm text-gray-600">
+          Full name <span className="text-red-500">*</span> (required for registration)
+        </div>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="w-full mt-1 p-2 border rounded"
+          placeholder="Your full name"
         />
       </label>
 
