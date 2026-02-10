@@ -16,7 +16,8 @@ import {
   LogOut,
   Menu,
   X,
-  Shield
+  Shield,
+  MessageSquare
 } from "lucide-react";
 
 type AppUser = {
@@ -117,6 +118,12 @@ const Navbar = () => {
                       <Users className="inline w-4 h-4 mr-1" />
                       Club
                     </NavLink>
+
+                    <NavLink to="/club/complaints">
+                      <MessageSquare className="inline w-4 h-4 mr-1" />
+                      Complaints
+                    </NavLink>
+
                     <Button asChild>
                       <Link to="/club/new-event">
                         <Plus className="inline w-4 h-4 mr-1" />
@@ -128,11 +135,10 @@ const Navbar = () => {
 
                 {/* Head Panel */}
                 {role === "head" && (
-                  <Link to="/head">
-
+                  <NavLink to="/head">
                     <Shield className="inline w-4 h-4 mr-1" />
                     Head Panel
-                  </Link>
+                  </NavLink>
                 )}
 
                 <NavLink to="/profile">
@@ -146,20 +152,24 @@ const Navbar = () => {
                   </div>
                 )}
 
-                <button onClick={handleLogout} className="px-3 py-2 rounded-lg hover:bg-secondary text-red-500">
+                <button
+                  onClick={handleLogout}
+                  className="px-3 py-2 rounded-lg hover:bg-secondary text-red-500"
+                >
                   <LogOut className="w-4 h-4" />
                 </button>
               </>
             )}
           </div>
 
-          {/* Mobile */}
+          {/* Mobile toggle */}
           <button className="md:hidden" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
             {isMobileMenuOpen ? <X /> : <Menu />}
           </button>
         </div>
       </div>
 
+      {/* Mobile menu */}
       {isMobileMenuOpen && (
         <div className="md:hidden bg-card/95 py-4 border-t">
           <div className="flex flex-col space-y-2 px-4">
@@ -174,10 +184,13 @@ const Navbar = () => {
               <>
                 <Link to="/events">Events</Link>
                 {role === "student" && <Link to="/dashboard">Dashboard</Link>}
-                {role === "club" && <>
-                  <Link to="/club">Club</Link>
-                  <Link to="/club/new-event">New Event</Link>
-                </>}
+                {role === "club" && (
+                  <>
+                    <Link to="/club">Club</Link>
+                    <Link to="/club/complaints">Complaints</Link>
+                    <Link to="/club/new-event">New Event</Link>
+                  </>
+                )}
                 {role === "head" && <Link to="/head">Head Panel</Link>}
                 <Link to="/profile">Profile</Link>
                 <button onClick={handleLogout}>Sign Out</button>

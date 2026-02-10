@@ -4,7 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-
+// ✅ FIXED IMPORT (capital C)
+import ComplaintsPage from "@/pages/Complaints";
 
 // Pages
 import Index from "./pages/Index";
@@ -20,8 +21,6 @@ import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 import HeadDashboard from "./pages/HeadDashboard";
 import ClubProposals from "./pages/ClubProposals";
-
-
 
 // Layout
 import Layout from "./components/Layout";
@@ -75,29 +74,6 @@ const App = () => {
                 }
               />
 
-
-
-              <Route
-  path="/head"
-  element={
-    <ProtectedRoute>
-      <HeadDashboard />
-    </ProtectedRoute>
-  }
-/>
-
-
-<Route
-  path="/club/proposals"
-  element={
-    <ProtectedRoute>
-      <ClubProposals />
-    </ProtectedRoute>
-  }
-/>
-
-
-
               <Route
                 path="/club/new-event"
                 element={
@@ -105,7 +81,36 @@ const App = () => {
                     <ClubNewEvent />
                   </ProtectedRoute>
                 }
-              /> 
+              />
+
+              <Route
+                path="/club/proposals"
+                element={
+                  <ProtectedRoute>
+                    <ClubProposals />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* ✅ FIXED: Complaints route */}
+              <Route
+                path="/club/complaints"
+                element={
+                  <ProtectedRoute>
+                    <ComplaintsPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Head */}
+              <Route
+                path="/head"
+                element={
+                  <ProtectedRoute>
+                    <HeadDashboard />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* 404 */}
               <Route path="*" element={<NotFound />} />

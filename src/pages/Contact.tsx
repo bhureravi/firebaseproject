@@ -1,3 +1,4 @@
+// src/pages/Contact.tsx
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,10 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
+import { auth, db } from "../firebaseConfig";
+import { doc, getDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+
 const Contact = () => {
   const [formData, setFormData] = useState({
     name: "",
@@ -29,24 +34,92 @@ const Contact = () => {
     category: ""
   });
   const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Mock form submission
-    toast({
-      title: "Message sent!",
-      description: "We'll get back to you within 24 hours.",
-    });
-    
-    // Reset form
-    setFormData({
-      name: "",
-      email: "",
-      subject: "",
-      message: "",
-      category: ""
-    });
+
+    // Basic client validation
+    if (!formData.subject.trim() || !formData.message.trim()) {
+      toast({
+        title: "Missing fields",
+        description: "Please provide subject and message before submitting.",
+      });
+      return;
+    }
+
+    // Require user to be signed in
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      toast({
+        title: "Sign in required",
+        description: "You need to be signed in as a student to send a message. Please sign in first.",
+      });
+      // Optionally navigate to sign in
+      navigate("/signin");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Fetch user profile from Firestore to confirm role and name
+      const userRef = doc(db, "users", currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        throw new Error("User profile not found in Firestore. Please complete your profile.");
+      }
+
+      const userData = userSnap.data();
+      const role = userData?.role || "student";
+      const userName = (userData?.name || "").trim();
+
+      // Only students allowed to submit
+      if (role !== "student") {
+        throw new Error("Only student accounts are allowed to submit this form.");
+      }
+
+      // Prepare complaint payload
+      const payload = {
+        userId: currentUser.uid,
+        userName: userName || formData.name.trim() || `${currentUser.email}`,
+        userEmail: currentUser.email || formData.email.trim(),
+        subject: formData.subject.trim(),
+        message: formData.message.trim(),
+        category: formData.category || "general",
+        status: "open",
+        assignedTo: null,
+        seenBy: [],
+        createdAt: serverTimestamp(),
+      };
+
+      // Save to Firestore collection 'complaints'
+      const complaintsCol = collection(db, "complaints");
+      await addDoc(complaintsCol, payload);
+
+      toast({
+        title: "Message sent!",
+        description: "Your message has been submitted. Club admins will review it shortly.",
+      });
+
+      // reset form
+      setFormData({
+        name: "",
+        email: "",
+        subject: "",
+        message: "",
+        category: ""
+      });
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        title: "Submission failed",
+        description: err?.message || "An error occurred. Try again later.",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -112,7 +185,7 @@ const Contact = () => {
 
                   <div className="space-y-2">
                     <Label htmlFor="category">Category</Label>
-                    <Select onValueChange={(value) => handleInputChange('category', value)}>
+                    <Select onValueChange={(value) => handleInputChange('category', value)} value={formData.category}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a category" />
                       </SelectTrigger>
@@ -154,9 +227,10 @@ const Contact = () => {
                     type="submit" 
                     className="w-full bg-gradient-hero hover:opacity-90"
                     size="lg"
+                    disabled={loading}
                   >
                     <Mail className="w-4 h-4 mr-2" />
-                    Send Message
+                    {loading ? "Sending..." : "Send Message"}
                   </Button>
                 </form>
               </CardContent>
